@@ -1,0 +1,17 @@
+# Build output
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+
+# Local .NET / template cache
+.dotnet/
+.templateengine/
+
+# OS / editor
+.vs/
+.vscode/
+Thumbs.db
+Desktop.ini
