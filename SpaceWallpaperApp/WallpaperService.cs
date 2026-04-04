@@ -14,7 +14,9 @@ public sealed class WallpaperService
         var outputPath = Path.Combine(outputDirectory, "current-wallpaper.jpg");
 
         using var source = Image.FromFile(sourceImagePath);
-        var screenBounds = Screen.PrimaryScreen?.Bounds ?? new Rectangle(0, 0, 2560, 1440);
+        var primaryScreen = Screen.PrimaryScreen;
+        var screenBounds = primaryScreen?.Bounds ?? new Rectangle(0, 0, 2560, 1440);
+        var workingArea = primaryScreen?.WorkingArea ?? screenBounds;
         using var bitmap = new Bitmap(screenBounds.Width, screenBounds.Height);
         using var graphics = Graphics.FromImage(bitmap);
 
@@ -33,17 +35,19 @@ public sealed class WallpaperService
         using var shadowBrush = new SolidBrush(Color.FromArgb(180, 0, 0, 0));
         using var backgroundBrush = new SolidBrush(Color.FromArgb(150, 8, 8, 8));
 
-        var rightMargin = Math.Max(28, bitmap.Width / 55);
-        var bottomMargin = Math.Max(36, bitmap.Height / 28);
-        var maxTextWidth = Math.Min(bitmap.Width / 5, 300);
-        var description = GetShortDescription(candidate.Description);
+        var workAreaRightInset = Math.Max(0, screenBounds.Right - workingArea.Right);
+        var workAreaBottomInset = Math.Max(0, screenBounds.Bottom - workingArea.Bottom);
+        var rightMargin = Math.Max(24, bitmap.Width / 70) + workAreaRightInset + 10;
+        var bottomMargin = Math.Max(28, bitmap.Height / 40) + workAreaBottomInset + 10;
+        var maxTextWidth = Math.Min(bitmap.Width / 4, 420);
+        var description = GetWallpaperDescription(candidate.Description);
 
         var titleSize = graphics.MeasureString(candidate.Title, titleFont, maxTextWidth);
         var descriptionSize = graphics.MeasureString(description, descriptionFont, maxTextWidth);
         var boxWidth = (int)Math.Ceiling(Math.Max(titleSize.Width, descriptionSize.Width)) + 20;
-        var boxHeight = (int)Math.Ceiling(titleSize.Height + descriptionSize.Height) + 20;
-        var boxX = Math.Max(12, bitmap.Width - boxWidth - rightMargin);
-        var boxY = Math.Max(12, bitmap.Height - boxHeight - bottomMargin);
+        var boxHeight = (int)Math.Ceiling(titleSize.Height + descriptionSize.Height) + 22;
+        var boxX = Math.Max(12, workingArea.Right - boxWidth - rightMargin);
+        var boxY = Math.Max(12, workingArea.Bottom - boxHeight - bottomMargin);
 
         using var backgroundPath = CreateRoundedRectanglePath(new Rectangle(boxX, boxY, boxWidth, boxHeight), 12);
         graphics.FillPath(backgroundBrush, backgroundPath);
@@ -109,13 +113,12 @@ public sealed class WallpaperService
 
     private static string BuildCaption(NasaImageCandidate candidate)
     {
-        return $"{candidate.Title}{Environment.NewLine}{GetShortDescription(candidate.Description)}";
+        return $"{candidate.Title}{Environment.NewLine}{GetWallpaperDescription(candidate.Description)}";
     }
 
-    private static string GetShortDescription(string description)
+    private static string GetWallpaperDescription(string description)
     {
-        var clean = description.Trim();
-        return clean.Length <= 65 ? clean : $"{clean[..62]}...";
+        return description.Trim();
     }
 
     private static void DrawShadowedText(Graphics graphics, string text, Font font, Brush textBrush, Brush shadowBrush, RectangleF layoutRectangle)
@@ -124,7 +127,7 @@ public sealed class WallpaperService
         {
             Alignment = StringAlignment.Near,
             LineAlignment = StringAlignment.Near,
-            Trimming = StringTrimming.EllipsisWord
+            Trimming = StringTrimming.None
         };
 
         var shadowRectangle = new RectangleF(layoutRectangle.X + 2, layoutRectangle.Y + 2, layoutRectangle.Width, layoutRectangle.Height);
