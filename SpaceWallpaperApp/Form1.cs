@@ -51,6 +51,7 @@ public partial class Form1 : Form
             "SpaceWallpaperApp",
             "Generated");
         _settings = _settingsStore.Load();
+        MigrateLegacyStyleDefault();
 
         InitializeComponent();
         BuildLayout();
@@ -420,7 +421,7 @@ public partial class Form1 : Form
 
         var styleName = Enum.GetNames<WallpaperStyle>().Contains(_settings.SelectedStyle)
             ? _settings.SelectedStyle
-            : WallpaperStyle.Fill.ToString();
+            : WallpaperStyle.Fit.ToString();
         _styleComboBox.SelectedItem = styleName;
 
         _autoStartCheckBox.Checked = _autoStartService.IsEnabled();
@@ -429,7 +430,7 @@ public partial class Form1 : Form
     private void SaveCurrentSelections()
     {
         _settings.SelectedTopic = _topicComboBox.SelectedItem?.ToString() ?? TopicOptions[0];
-        _settings.SelectedStyle = _styleComboBox.SelectedItem?.ToString() ?? WallpaperStyle.Fill.ToString();
+        _settings.SelectedStyle = _styleComboBox.SelectedItem?.ToString() ?? WallpaperStyle.Fit.ToString();
         _settingsStore.Save(_settings);
     }
 
@@ -486,7 +487,7 @@ public partial class Form1 : Form
             var candidate = await _nasaImageService.GetHighResolutionImageAsync(topic, _downloadDirectory, CancellationToken.None);
             var style = Enum.TryParse<WallpaperStyle>(_settings.SelectedStyle, out var parsedStyle)
                 ? parsedStyle
-                : WallpaperStyle.Fill;
+                : WallpaperStyle.Fit;
 
             var renderedWallpaperPath = _wallpaperService.CreateCaptionedWallpaper(candidate.LocalPath, candidate, _generatedWallpaperDirectory, style);
             _wallpaperService.SetWallpaper(renderedWallpaperPath, style);
@@ -504,5 +505,21 @@ public partial class Form1 : Form
     {
         _previewBox?.Image?.Dispose();
         base.OnFormClosed(e);
+    }
+
+    private void MigrateLegacyStyleDefault()
+    {
+        if (_settings.HasMigratedToFitDefault)
+        {
+            return;
+        }
+
+        if (string.Equals(_settings.SelectedStyle, WallpaperStyle.Fill.ToString(), StringComparison.Ordinal))
+        {
+            _settings.SelectedStyle = WallpaperStyle.Fit.ToString();
+        }
+
+        _settings.HasMigratedToFitDefault = true;
+        _settingsStore.Save(_settings);
     }
 }
