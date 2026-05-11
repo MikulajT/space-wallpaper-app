@@ -2,17 +2,6 @@ namespace SpaceWallpaperApp;
 
 public partial class Form1 : Form
 {
-    private static readonly string[] TopicOptions =
-    {
-        "Nebula",
-        "Galaxy",
-        "Moon",
-        "Mars",
-        "Saturn",
-        "Jupiter",
-        "Earth",
-    };
-
     private readonly NasaImageService _nasaImageService = new();
     private readonly WallpaperService _wallpaperService = new();
     private readonly AutoStartService _autoStartService = new();
@@ -21,7 +10,6 @@ public partial class Form1 : Form
     private readonly string _generatedWallpaperDirectory;
     private readonly bool _startupMode;
 
-    private ComboBox _topicComboBox = null!;
     private ComboBox _styleComboBox = null!;
     private Button _refreshButton = null!;
     private Button _applyButton = null!;
@@ -94,11 +82,9 @@ public partial class Form1 : Form
             Dock = DockStyle.Top,
             Height = 88,
             Padding = new Padding(20, 8, 20, 8),
-            ColumnCount = 8,
+            ColumnCount = 6,
             RowCount = 1,
         };
-        controlsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 85));
-        controlsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
         controlsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
         controlsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
         controlsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -110,23 +96,8 @@ public partial class Form1 : Form
         {
             Anchor = AnchorStyles.Left,
             AutoSize = true,
-            Text = "Topic",
-        }, 0, 0);
-
-        _topicComboBox = new ComboBox
-        {
-            Anchor = AnchorStyles.Left | AnchorStyles.Right,
-            DropDownStyle = ComboBoxStyle.DropDownList,
-        };
-        _topicComboBox.Items.AddRange(TopicOptions);
-        controlsPanel.Controls.Add(_topicComboBox, 1, 0);
-
-        controlsPanel.Controls.Add(new Label
-        {
-            Anchor = AnchorStyles.Left,
-            AutoSize = true,
             Text = "Style",
-        }, 2, 0);
+        }, 0, 0);
 
         _styleComboBox = new ComboBox
         {
@@ -134,7 +105,7 @@ public partial class Form1 : Form
             DropDownStyle = ComboBoxStyle.DropDownList,
         };
         _styleComboBox.Items.AddRange(Enum.GetNames<WallpaperStyle>());
-        controlsPanel.Controls.Add(_styleComboBox, 3, 0);
+        controlsPanel.Controls.Add(_styleComboBox, 1, 0);
 
         _autoStartCheckBox = new CheckBox
         {
@@ -143,7 +114,7 @@ public partial class Form1 : Form
             Text = "Random wallpaper on Windows startup",
         };
         _autoStartCheckBox.CheckedChanged += AutoStartCheckBox_CheckedChanged;
-        controlsPanel.Controls.Add(_autoStartCheckBox, 4, 0);
+        controlsPanel.Controls.Add(_autoStartCheckBox, 2, 0);
 
         _refreshButton = new Button
         {
@@ -155,7 +126,7 @@ public partial class Form1 : Form
             UseVisualStyleBackColor = true,
         };
         _refreshButton.Click += RefreshButton_Click;
-        controlsPanel.Controls.Add(_refreshButton, 5, 0);
+        controlsPanel.Controls.Add(_refreshButton, 3, 0);
 
         _applyButton = new Button
         {
@@ -167,7 +138,7 @@ public partial class Form1 : Form
             UseVisualStyleBackColor = true,
         };
         _applyButton.Click += ApplyButton_Click;
-        controlsPanel.Controls.Add(_applyButton, 6, 0);
+        controlsPanel.Controls.Add(_applyButton, 4, 0);
 
         var contentSplit = new SplitContainer
         {
@@ -265,9 +236,8 @@ public partial class Form1 : Form
         {
             AutoSize = true,
             MaximumSize = new Size(320, 0),
-            Text = "The app uses NASA's public image library, prefers landscape images, and rejects images below 2048 pixels on the long edge.",
+            Text = "The app uses NASA's public image library to fetch random space images.",
         };
-        noteLabel.Text = "The app uses NASA's public image library, prefers landscape images, and now targets 2560 x 1440 or better for sharper wallpapers.";
 
         _statusLabel = new Label
         {
@@ -349,8 +319,7 @@ public partial class Form1 : Form
         {
             ToggleBusyState(true, "Searching NASA image library...");
 
-            var topic = _topicComboBox.SelectedItem?.ToString() ?? "Deep space";
-            var candidate = await _nasaImageService.GetHighResolutionImageAsync(topic, _downloadDirectory, CancellationToken.None);
+            var candidate = await _nasaImageService.GetHighResolutionImageAsync(_downloadDirectory, CancellationToken.None);
             _currentCandidate = candidate;
             _currentImagePath = candidate.LocalPath;
             SaveCurrentSelections();
@@ -387,7 +356,6 @@ public partial class Form1 : Form
     {
         _refreshButton.Enabled = !isBusy;
         _applyButton.Enabled = !isBusy;
-        _topicComboBox.Enabled = !isBusy;
         _styleComboBox.Enabled = !isBusy;
         _autoStartCheckBox.Enabled = !isBusy;
         UseWaitCursor = isBusy;
@@ -416,8 +384,6 @@ public partial class Form1 : Form
 
     private void ApplySettingsToUi()
     {
-        _topicComboBox.SelectedItem = TopicOptions.Contains(_settings.SelectedTopic) ? _settings.SelectedTopic : TopicOptions[0];
-
         var styleName = Enum.GetNames<WallpaperStyle>().Contains(_settings.SelectedStyle)
             ? _settings.SelectedStyle
             : WallpaperStyle.Fit.ToString();
@@ -428,7 +394,6 @@ public partial class Form1 : Form
 
     private void SaveCurrentSelections()
     {
-        _settings.SelectedTopic = _topicComboBox.SelectedItem?.ToString() ?? TopicOptions[0];
         _settings.SelectedStyle = _styleComboBox.SelectedItem?.ToString() ?? WallpaperStyle.Fit.ToString();
         _settingsStore.Save(_settings);
     }
@@ -482,8 +447,7 @@ public partial class Form1 : Form
 
         try
         {
-            var topic = TopicOptions[Random.Shared.Next(TopicOptions.Length)];
-            var candidate = await _nasaImageService.GetHighResolutionImageAsync(topic, _downloadDirectory, CancellationToken.None);
+            var candidate = await _nasaImageService.GetHighResolutionImageAsync(_downloadDirectory, CancellationToken.None);
             var style = Enum.TryParse<WallpaperStyle>(_settings.SelectedStyle, out var parsedStyle)
                 ? parsedStyle
                 : WallpaperStyle.Fit;
@@ -491,7 +455,6 @@ public partial class Form1 : Form
             var renderedWallpaperPath = _wallpaperService.CreateCaptionedWallpaper(candidate.LocalPath, candidate, _generatedWallpaperDirectory, style);
             _wallpaperService.SetWallpaper(renderedWallpaperPath, style);
             _settings.LastAutoAppliedDate = today;
-            _settings.SelectedTopic = topic;
             _settingsStore.Save(_settings);
         }
         catch

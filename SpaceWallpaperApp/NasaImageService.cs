@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
@@ -5,63 +6,64 @@ namespace SpaceWallpaperApp;
 
 public sealed class NasaImageService
 {
-    private const int MinimumWallpaperWidth = 2560;
-    private const int MinimumWallpaperHeight = 1440;
-    private const double MinimumAspectRatio = 1.2;
-    private const double MaximumAspectRatio = 2.25;
-
     private static readonly HttpClient HttpClient = new()
     {
         BaseAddress = new Uri("https://images-api.nasa.gov/")
     };
 
-    private static readonly string[] GenericQueries =
+    private static readonly string[] AstronomyCenters =
     {
-        "nebula",
-        "galaxy",
-        "deep space",
-        "star cluster",
-        "milky way",
-        "saturn",
-        "jupiter",
-        "earth from space",
-        "mars",
-        "moon"
+        "GSFC",
+        "JPL",
+        "STSCI",
+        "CHANDRA",
+        "ESA"
     };
 
-    public async Task<NasaImageCandidate> GetHighResolutionImageAsync(string topic, string downloadDirectory, CancellationToken cancellationToken)
+    public async Task<NasaImageCandidate> GetHighResolutionImageAsync(string downloadDirectory, CancellationToken cancellationToken)
     {
+        Debug.WriteLine("[NASA] Starting random image search");
         Directory.CreateDirectory(downloadDirectory);
 
-        var queries = BuildQueries(topic).ToArray();
-
-        foreach (var query in queries)
+        var result = await TryQueryAsync(downloadDirectory, cancellationToken);
+        if (result is not null)
         {
-            var result = await TryQueryAsync(query, downloadDirectory, cancellationToken);
-            if (result is not null)
-            {
-                return result;
-            }
+            Debug.WriteLine($"[NASA] ✓ Found image: {result.Title} ({result.Width}x{result.Height})");
+            return result;
         }
 
-        throw new InvalidOperationException("NASA did not return a suitable 2K+ image. Please try again.");
+        throw new InvalidOperationException("NASA did not return a suitable image. Please try again.");
     }
 
-    private async Task<NasaImageCandidate?> TryQueryAsync(string query, string downloadDirectory, CancellationToken cancellationToken)
+    private async Task<NasaImageCandidate?> TryQueryAsync(string downloadDirectory, CancellationToken cancellationToken)
     {
-        var response = await HttpClient.GetFromJsonAsync<SearchResponse>(
-            $"search?q={Uri.EscapeDataString(query)}&media_type=image&page_size=100",
-            cancellationToken);
+        var centerFilter = string.Join(",", AstronomyCenters);
+        var apiUrl = $"search?q=space&media_type=image&page_size=100&center={Uri.EscapeDataString(centerFilter)}";
+        Debug.WriteLine($"[NASA] API call: {apiUrl}");
+
+        var response = await HttpClient.GetFromJsonAsync<SearchResponse>(apiUrl, cancellationToken);
 
         var items = response?.Collection?.Items ?? [];
+        Debug.WriteLine($"[NASA] Received {items.Count} results from API");
+
+        var candidatesChecked = 0;
+        const int MaxCandidatesToCheck = 50;
 
         foreach (var item in items.OrderBy(_ => Guid.NewGuid()))
         {
+            if (candidatesChecked >= MaxCandidatesToCheck)
+            {
+                break;
+            }
+
             var data = item.Data?.FirstOrDefault();
-            if (data is null || !LooksPhotographic(data))
+            if (data is null)
             {
                 continue;
             }
+
+            candidatesChecked++;
+            Debug.WriteLine($"[NASA] Checking candidate #{candidatesChecked}: {data.Title} (ID: {data.NasaId})");
 
             var manifest = await HttpClient.GetFromJsonAsync<AssetResponse>($"asset/{Uri.EscapeDataString(data.NasaId)}", cancellationToken);
             var assetUrls = manifest?.Collection?.Items?.Select(x => x.Href).Where(x => !string.IsNullOrWhiteSpace(x)).ToArray() ?? [];
@@ -73,86 +75,120 @@ public sealed class NasaImageService
 
             if (originalUrl is null)
             {
+                Debug.WriteLine($"[NASA] No downloadable image URL found for {data.NasaId}");
                 continue;
             }
 
             var fileName = Path.GetFileName(new Uri(originalUrl).LocalPath);
             var localPath = Path.Combine(downloadDirectory, fileName);
+            Debug.WriteLine($"[NASA] Target file: {fileName}");
 
             if (!File.Exists(localPath))
             {
-                await using var remoteStream = await HttpClient.GetStreamAsync(originalUrl, cancellationToken);
-                await using var localStream = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None);
-                await remoteStream.CopyToAsync(localStream, cancellationToken);
+                Debug.WriteLine($"[NASA] File not cached, downloading...");
+                var previewUrl = assetUrls
+                    .Where(IsDownloadableImage)
+                    .Where(url => url.Contains("large", StringComparison.OrdinalIgnoreCase) || 
+                                  url.Contains("medium", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(GetPriority)
+                    .FirstOrDefault();
+
+                var urlToCheck = previewUrl ?? originalUrl;
+                Debug.WriteLine($"[NASA] Downloading {(previewUrl != null ? "preview" : "original")} to check dimensions...");
+                var tempFileName = Path.GetFileName(new Uri(urlToCheck).LocalPath);
+                var tempPath = Path.Combine(downloadDirectory, $"temp_{tempFileName}");
+
+                try
+                {
+                    await using (var remoteStream = await HttpClient.GetStreamAsync(urlToCheck, cancellationToken))
+                    await using (var localStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        await remoteStream.CopyToAsync(localStream, cancellationToken);
+                    }
+
+                    // Validate it's actually an image by trying to load it
+                    int width, height;
+                    try
+                    {
+                        using var testImage = Image.FromFile(tempPath);
+                        width = testImage.Width;
+                        height = testImage.Height;
+                        Debug.WriteLine($"[NASA] Image dimensions: {width}x{height}");
+                    }
+                    catch (Exception imgEx)
+                    {
+                        Debug.WriteLine($"[NASA] Downloaded file is not a valid image: {imgEx.Message}");
+                        File.Delete(tempPath);
+                        continue;
+                    }
+
+                    if (previewUrl is not null && urlToCheck == previewUrl)
+                    {
+                        Debug.WriteLine($"[NASA] Downloading full resolution original...");
+                        File.Delete(tempPath);
+
+                        await using (var origStream = await HttpClient.GetStreamAsync(originalUrl, cancellationToken))
+                        await using (var origLocalStream = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                        {
+                            await origStream.CopyToAsync(origLocalStream, cancellationToken);
+                        }
+
+                        // Validate the final downloaded image
+                        try
+                        {
+                            using var finalTest = Image.FromFile(localPath);
+                            _ = finalTest.Width; // Just access to ensure it loads
+                        }
+                        catch
+                        {
+                            Debug.WriteLine($"[NASA] Final downloaded image is not valid");
+                            File.Delete(localPath);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        File.Move(tempPath, localPath, overwrite: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[NASA] Error downloading/checking image: {ex.Message}");
+                    if (File.Exists(tempPath))
+                    {
+                        File.Delete(tempPath);
+                    }
+                    continue;
+                }
             }
 
-            using var image = Image.FromFile(localPath);
-            var width = image.Width;
-            var height = image.Height;
-            var aspectRatio = (double)width / height;
+            Debug.WriteLine($"[NASA] Using cached file: {fileName}");
 
-            if (width < MinimumWallpaperWidth
-                || height < MinimumWallpaperHeight
-                || width < height
-                || aspectRatio < MinimumAspectRatio
-                || aspectRatio > MaximumAspectRatio)
+            // Validate cached file is still a valid image
+            try
             {
+                using var image = Image.FromFile(localPath);
+                var finalWidth = image.Width;
+                var finalHeight = image.Height;
+
+                return new NasaImageCandidate(
+                    data.Title,
+                    CleanDescription(data.Description),
+                    finalWidth,
+                    finalHeight,
+                    localPath,
+                    $"https://images.nasa.gov/details-{data.NasaId}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[NASA] Cached file is corrupt or invalid: {ex.Message}");
+                // Delete corrupt cached file and try next candidate
+                try { File.Delete(localPath); } catch { }
                 continue;
             }
-
-            return new NasaImageCandidate(
-                data.Title,
-                CleanDescription(data.Description),
-                width,
-                height,
-                localPath,
-                $"https://images.nasa.gov/details-{data.NasaId}");
         }
 
         return null;
-    }
-
-    private static IEnumerable<string> BuildQueries(string topic)
-    {
-        var cleanTopic = topic.Trim();
-
-        if (!string.IsNullOrWhiteSpace(cleanTopic))
-        {
-            yield return cleanTopic;
-            yield return $"{cleanTopic} space";
-            yield return $"{cleanTopic} telescope";
-        }
-
-        foreach (var query in GenericQueries)
-        {
-            yield return query;
-        }
-    }
-
-    private static bool LooksPhotographic(SearchData data)
-    {
-        var combined = $"{data.Title} {data.Description}".ToLowerInvariant();
-        var blockedTerms = new[]
-        {
-            "illustration",
-            "artist",
-            "concept",
-            "rendering",
-            "poster",
-            "patch",
-            "diagram",
-            "infographic",
-            "simulation",
-            "composite logo",
-            "mosaic",
-            "collage",
-            "triptych",
-            "three-panel",
-            "panel",
-            "montage"
-        };
-
-        return blockedTerms.All(term => !combined.Contains(term, StringComparison.Ordinal));
     }
 
     private static bool IsDownloadableImage(string url)
