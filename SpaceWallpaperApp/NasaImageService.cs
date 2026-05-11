@@ -20,6 +20,43 @@ public sealed class NasaImageService
         "ESA"
     };
 
+    private static readonly string[] SpaceQueries =
+    {
+        "nebula",
+        "galaxy",
+        "star cluster",
+        "supernova",
+        "planetary nebula",
+        "spiral galaxy",
+        "elliptical galaxy",
+        "NGC",
+        "Messier",
+        "globular cluster",
+        "interstellar",
+        "cosmic",
+        "constellation",
+        "stellar",
+        "deep space",
+        "universe",
+        "astronomical",
+        "celestial",
+        "quasar",
+        "pulsar",
+        "black hole",
+        "star formation",
+        "emission nebula",
+        "reflection nebula",
+        "dark nebula",
+        "Saturn rings",
+        "Jupiter atmosphere",
+        "Mars surface",
+        "Moon surface",
+        "lunar crater",
+        "planetary",
+        "asteroid",
+        "comet"
+    };
+
     public async Task<NasaImageCandidate> GetHighResolutionImageAsync(string downloadDirectory, CancellationToken cancellationToken)
     {
         Debug.WriteLine("[NASA] Starting random image search");
@@ -38,8 +75,9 @@ public sealed class NasaImageService
     private async Task<NasaImageCandidate?> TryQueryAsync(string downloadDirectory, CancellationToken cancellationToken)
     {
         var centerFilter = string.Join(",", AstronomyCenters);
-        var apiUrl = $"search?q=space&media_type=image&page_size=100&center={Uri.EscapeDataString(centerFilter)}";
-        Debug.WriteLine($"[NASA] API call: {apiUrl}");
+        var randomQuery = SpaceQueries[Random.Shared.Next(SpaceQueries.Length)];
+        var apiUrl = $"search?q={Uri.EscapeDataString(randomQuery)}&media_type=image&page_size=100&center={Uri.EscapeDataString(centerFilter)}";
+        Debug.WriteLine($"[NASA] API call with query '{randomQuery}': {apiUrl}");
 
         var response = await HttpClient.GetFromJsonAsync<SearchResponse>(apiUrl, cancellationToken);
 
