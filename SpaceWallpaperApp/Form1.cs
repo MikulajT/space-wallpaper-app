@@ -4,7 +4,6 @@ public partial class Form1 : Form
 {
     private static readonly string[] TopicOptions =
     {
-        "Deep space",
         "Nebula",
         "Galaxy",
         "Moon",
