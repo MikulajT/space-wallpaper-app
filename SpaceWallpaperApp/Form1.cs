@@ -165,7 +165,7 @@ public partial class Form1 : Form
         _previewCaptionPanel = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 84,
+            Height = 60,
             BackColor = Color.FromArgb(28, 28, 28),
             Padding = new Padding(12, 10, 12, 10),
         };
@@ -174,9 +174,8 @@ public partial class Form1 : Form
         {
             Dock = DockStyle.Fill,
             ForeColor = Color.WhiteSmoke,
-            TextAlign = ContentAlignment.BottomRight,
+            TextAlign = ContentAlignment.TopLeft,
             Font = new Font("Segoe UI", 10F, FontStyle.Regular),
-            MaximumSize = new Size(440, 0),
             Text = "Image description will appear here.",
         };
 
@@ -210,7 +209,7 @@ public partial class Form1 : Form
         {
             AutoSize = true,
             ForeColor = Color.DimGray,
-            MaximumSize = new Size(320, 0),
+            MaximumSize = new Size(640, 0),
             Text = "Choose a topic and fetch a high-resolution space image.",
         };
 
@@ -262,6 +261,21 @@ public partial class Form1 : Form
 
         ApplySettingsToUi();
         ResumeLayout();
+    }
+
+    private void UpdatePreviewCaption(string text)
+    {
+        _previewCaptionLabel.Text = text;
+
+        using var g = _previewCaptionLabel.CreateGraphics();
+        var availableWidth = _previewCaptionPanel.ClientSize.Width - _previewCaptionPanel.Padding.Horizontal;
+        if (availableWidth <= 0) return;
+
+        var measuredSize = g.MeasureString(text, _previewCaptionLabel.Font, availableWidth);
+        var desiredHeight = (int)Math.Ceiling(measuredSize.Height) + _previewCaptionPanel.Padding.Vertical;
+        var clampedHeight = Math.Max(40, Math.Min(desiredHeight, 150));
+
+        _previewCaptionPanel.Height = clampedHeight;
     }
 
     protected override async void OnShown(EventArgs e)
@@ -327,7 +341,7 @@ public partial class Form1 : Form
             ReplacePreview(candidate.LocalPath);
             _titleLabel.Text = candidate.Title;
             _detailsLabel.Text = $"{candidate.Width} x {candidate.Height}px{Environment.NewLine}{candidate.Description}";
-            _previewCaptionLabel.Text = BuildPreviewCaption(candidate);
+            UpdatePreviewCaption(BuildPreviewCaption(candidate));
             _sourceLink.Visible = true;
             SetStatus($"Loaded \"{candidate.Title}\".");
         }
@@ -335,7 +349,7 @@ public partial class Form1 : Form
         {
             MessageBox.Show(this, $"Could not load a wallpaper image.{Environment.NewLine}{Environment.NewLine}{ex.Message}", "NASA download error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             SetStatus("Image fetch failed.");
-            _previewCaptionLabel.Text = "Image description will appear here.";
+            UpdatePreviewCaption("Image description will appear here.");
         }
         finally
         {
@@ -373,13 +387,7 @@ public partial class Form1 : Form
 
     private static string BuildPreviewCaption(NasaImageCandidate candidate)
     {
-        var shortDescription = candidate.Description.Trim();
-        if (shortDescription.Length > 160)
-        {
-            shortDescription = $"{shortDescription[..157]}...";
-        }
-
-        return $"{candidate.Title}{Environment.NewLine}{shortDescription}";
+        return $"{candidate.Title}{Environment.NewLine}{candidate.Description.Trim()}";
     }
 
     private void ApplySettingsToUi()

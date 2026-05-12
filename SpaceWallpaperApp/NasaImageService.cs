@@ -126,7 +126,7 @@ public sealed class NasaImageService
                 Debug.WriteLine($"[NASA] File not cached, downloading...");
                 var previewUrl = assetUrls
                     .Where(IsDownloadableImage)
-                    .Where(url => url.Contains("large", StringComparison.OrdinalIgnoreCase) || 
+                    .Where(url => url.Contains("large", StringComparison.OrdinalIgnoreCase) ||
                                   url.Contains("medium", StringComparison.OrdinalIgnoreCase))
                     .OrderByDescending(GetPriority)
                     .FirstOrDefault();
@@ -211,7 +211,7 @@ public sealed class NasaImageService
 
                 return new NasaImageCandidate(
                     data.Title,
-                    CleanDescription(data.Description),
+                    data.Description,
                     finalWidth,
                     finalHeight,
                     localPath,
@@ -256,17 +256,6 @@ public sealed class NasaImageService
         }
 
         return 0;
-    }
-
-    private static string CleanDescription(string? description)
-    {
-        if (string.IsNullOrWhiteSpace(description))
-        {
-            return "Real NASA space image.";
-        }
-
-        var normalized = description.ReplaceLineEndings(" ").Trim();
-        return normalized.Length <= 260 ? normalized : $"{normalized[..257]}...";
     }
 
     private sealed class SearchResponse

@@ -39,13 +39,18 @@ public sealed class WallpaperService
         var workAreaBottomInset = Math.Max(0, screenBounds.Bottom - workingArea.Bottom);
         var rightMargin = Math.Max(24, bitmap.Width / 70) + workAreaRightInset + 10;
         var bottomMargin = Math.Max(28, bitmap.Height / 40) + workAreaBottomInset + 10;
-        var maxTextWidth = Math.Min(bitmap.Width / 4, 420);
+        var maxTextWidth = Math.Min(bitmap.Width / 3, 600);
         var description = GetWallpaperDescription(candidate.Description);
 
-        var titleSize = graphics.MeasureString(candidate.Title, titleFont, maxTextWidth);
-        var descriptionSize = graphics.MeasureString(description, descriptionFont, maxTextWidth);
-        var boxWidth = (int)Math.Ceiling(Math.Max(titleSize.Width, descriptionSize.Width)) + 20;
-        var boxHeight = (int)Math.Ceiling(titleSize.Height + descriptionSize.Height) + 22;
+        using var titleFormat = new StringFormat { FormatFlags = StringFormatFlags.NoClip };
+        using var descFormat = new StringFormat { FormatFlags = StringFormatFlags.NoClip };
+
+        var titleSize = graphics.MeasureString(candidate.Title, titleFont, maxTextWidth, titleFormat);
+        var descriptionSize = graphics.MeasureString(description, descriptionFont, maxTextWidth, descFormat);
+
+        var boxPadding = 20;
+        var boxWidth = (int)Math.Ceiling(Math.Max(titleSize.Width, descriptionSize.Width)) + boxPadding;
+        var boxHeight = (int)Math.Ceiling(titleSize.Height + descriptionSize.Height) + 30;
         var boxX = Math.Max(12, workingArea.Right - boxWidth - rightMargin);
         var boxY = Math.Max(12, workingArea.Bottom - boxHeight - bottomMargin);
 
@@ -111,14 +116,15 @@ public sealed class WallpaperService
         }
     }
 
-    private static string BuildCaption(NasaImageCandidate candidate)
-    {
-        return $"{candidate.Title}{Environment.NewLine}{GetWallpaperDescription(candidate.Description)}";
-    }
-
     private static string GetWallpaperDescription(string description)
     {
-        return description.Trim();
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return "Real NASA space image.";
+        }
+
+        var normalized = description.ReplaceLineEndings(" ").Trim();
+        return normalized.Length <= 1500 ? normalized : $"{normalized[..1497]}...";
     }
 
     private static void DrawShadowedText(Graphics graphics, string text, Font font, Brush textBrush, Brush shadowBrush, RectangleF layoutRectangle)
@@ -127,7 +133,8 @@ public sealed class WallpaperService
         {
             Alignment = StringAlignment.Near,
             LineAlignment = StringAlignment.Near,
-            Trimming = StringTrimming.None
+            Trimming = StringTrimming.None,
+            FormatFlags = StringFormatFlags.NoClip
         };
 
         var shadowRectangle = new RectangleF(layoutRectangle.X + 2, layoutRectangle.Y + 2, layoutRectangle.Width, layoutRectangle.Height);
